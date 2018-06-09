@@ -1,0 +1,155 @@
+---
+title: "Learning tf-idf with tidytext"
+author: "Mohit Rathore"
+date: "25 April 2018"
+output: md_document
+---
+
+<br>
+<center><img src="alice.png" width="250" height="300"></center>
+<br>
+
+During text processing & information retrival we often need to find important words in document which can also help us identify what a document is about. tf-idf uses term frequency & inverse term frequency to find this. In this notebook I will briefly discuss tf-idf followed by an implementation of tf-idf on novel 'Alice's Adventures in Wonderland' using tidytext package in R.
+
+<br>
+
+#### Term Frequency
+The term frequency $$tf_{t,d}$$ of a term t in a document d represent the number of times t occurs in d. So a document with higher term frequency might be more relevant for searched term, but document relevance is not directly related to term frequency for example if we search for term 'car' then a document having car 10 times in it may not be 10 times more relevant compared to document with word 'car' appearing say only 1 or 2 times. 
+
+So TF or Term Frequency can be expressed as log of actual frequency as:
+$$tf_{t,d} = 1 + log_{10}(tf_{t,d})$$
+here 1 is added to avoid infinity in case term frequency us 0. if term does not occur in document then we can set tf as 0.
+
+<br>
+
+#### Inverse Term Frequency
+If we only use term frequency during text processing then most stop words like the,to,is etc. will get very high tf values which will not be relevant, so we use idf which decreases the weight for commonly used words and increases the weight for words which are actually relevant during information retrival. 
+
+IDF or inverse document frequncy is expressed as: 
+$$idf_t = log_{10}(N/df_t)$$
+here N represents total number of documents in our corpus & $$df_t$$ represent number of documents which contain term t. Here frequent stop word like 'the' will be present in almost all documents making $$N = df_{the}$$ & $$idf_{the} = 0$$.
+
+<br>
+
+#### TF-IDF
+Combination of tf & idf is measure of how important a word is to a document in a corpus of documents. tf-idf is expressed as:
+
+$$tf*idf$$
+Note: There is hyphen between tf & idf, don't confuse this with subtraction, tf & idf are multiplied here.
+
+<br>
+
+#### Finding tf-idf values from novel 'Alice's Adventures in Wonderland'
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidytext)
+library(tidyverse)
+library(dplyr)
+library(gutenbergr)
+library(stringr)
+library(ggplot2)
+
+```
+
+Downloading novel 'Alice's Adventures in Wonderland' from gutenberg.org using gutenbergr package
+
+```{r}
+raw_text <- gutenberg_download(28885) #Alice's Adventures in Wonderland by Lewis Carroll
+```
+
+<br>
+
+Alice's Adventures in Wonderland contains 12 Chapters, I will treat each chapter as a document and find tf-idf across each chapter of novel. Lets drive 3 new features story, line & word from raw_text. 
+
+```{r}
+alice <- raw_text %>%
+    mutate(story = ifelse(str_detect(text, "CHAPTER"), text, NA)) %>%
+    fill(story) %>%
+    mutate(story = factor(story, levels = unique(story))) %>%
+    mutate(line = row_number()) %>%
+    unnest_tokens(word, text) 
+
+alice
+```
+
+<br>
+
+Lets find most frequent word in novel by sorting words by their frequency
+
+```{r}
+alice %>%
+  count(word, sort = TRUE) 
+```
+_As most stop words like the, to, a etc. are most frequent in most text corpus we need to remove these to get more relevant words._
+
+<br>
+
+Removing stop words
+
+```{r}
+tidy_alice <- alice %>%
+    anti_join(stop_words)
+
+tidy_alice
+```
+
+<br>
+
+Words sorted by frequency, here alice is most frequent word followed by queen & time.
+
+```{r}
+tidy_alice %>%
+  count(word, sort = TRUE) 
+```
+
+<br>
+
+Top 10 words with highest tf-idf values in each Chapter of Alice's Adventures in Wonderland
+
+```{r}
+tidy_alice %>%
+    count(story, word, sort = TRUE) %>%
+    bind_tf_idf(word, story, n) %>%
+    arrange(-tf_idf) %>%
+    group_by(story) %>%
+    top_n(10) %>%
+    ungroup %>%
+    mutate(word = reorder(word, tf_idf)) %>%
+    ggplot(aes(word, tf_idf, fill = story)) +
+    geom_col(alpha = 0.8, show.legend = FALSE) +
+    facet_wrap(~ story, scales = "free") +
+    coord_flip()
+```
+
+<br>
+
+Lets also check words with highest tf-idf values in alice dataset with stop words included
+
+```{r}
+alice %>%
+    count(story, word, sort = TRUE) %>%
+    bind_tf_idf(word, story, n) %>%
+    arrange(-tf_idf) %>%
+    group_by(story) %>%
+    top_n(10) %>%
+    ungroup %>%
+    mutate(word = reorder(word, tf_idf)) %>%
+    ggplot(aes(word, tf_idf, fill = story)) +
+    geom_col(alpha = 0.8, show.legend = FALSE) +
+    facet_wrap(~ story, scales = "free") +
+    coord_flip()
+```
+
+_As expected top tf-idf values are not affected by stop words as IDF values of such stop words are very small due to thier presence in almost every chapter._
+
+<br>
+
+#### Refrences
+1. Project Gutenburg, http://www.gutenberg.org/
+2. Tidy Text Mining with R, https://www.tidytextmining.com/
+3. Speech & language processing, https://web.stanford.edu/~jurafsky/slp3/
+4. gutenbergr, https://cran.r-project.org/web/packages/gutenbergr/index.html
+
+<br>
+
+_Thanks for reading this notebook. In my next notebook I will extend this idea further & use tf-idf values to explore Topic Models._
